@@ -39,13 +39,28 @@ public class CatalogServiceClient {
                         + (authorizationHeader != null
                         && authorizationHeader.startsWith("Bearer ")));
 
-        webClient.get()
-                .uri("/api/plans/{id}", planId)
-                .header(
-                        HttpHeaders.AUTHORIZATION,
-                        authorizationHeader)
-                .retrieve()
-                .toBodilessEntity()
-                .block();
+        try {
+
+            webClient.get()
+                    .uri("/api/plans/{id}", planId)
+                    .header(
+                            HttpHeaders.AUTHORIZATION,
+                            authorizationHeader)
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block();
+
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException ex) {
+
+            System.out.println(
+                    "Catalog Service HTTP status: "
+                            + ex.getStatusCode());
+
+            System.out.println(
+                    "Catalog Service response body: "
+                            + ex.getResponseBodyAsString());
+
+            throw ex;
+        }
     }
 }

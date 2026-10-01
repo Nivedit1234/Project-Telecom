@@ -7,443 +7,238 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.telecom.subscriptionservice.client.CatalogServiceClient;
-import com.telecom.subscriptionservice.client.UserServiceClient;
 import com.telecom.subscriptionservice.dto.SubscriptionRequest;
 import com.telecom.subscriptionservice.dto.SubscriptionResponse;
 import com.telecom.subscriptionservice.exception.DuplicateResourceException;
 import com.telecom.subscriptionservice.exception.InvalidSubscriptionStateException;
 import com.telecom.subscriptionservice.exception.ResourceNotFoundException;
+import com.telecom.subscriptionservice.model.MobileLine;
+import com.telecom.subscriptionservice.model.MobileLineStatus;
 import com.telecom.subscriptionservice.model.Subscription;
 import com.telecom.subscriptionservice.model.SubscriptionStatus;
+import com.telecom.subscriptionservice.repository.MobileLineRepository;
 import com.telecom.subscriptionservice.repository.SubscriptionRepository;
 
 @Service
 public class SubscriptionService {
 
     private final SubscriptionRepository subscriptionRepository;
-
-    /*
-     * Client used to communicate with User Service.
-     */
-    private final UserServiceClient userServiceClient;
-
-    /*
-     * Client used to communicate with Catalog Service.
-     */
+    private final MobileLineRepository mobileLineRepository;
     private final CatalogServiceClient catalogServiceClient;
 
     public SubscriptionService(
             SubscriptionRepository subscriptionRepository,
-            UserServiceClient userServiceClient,
+            MobileLineRepository mobileLineRepository,
             CatalogServiceClient catalogServiceClient) {
 
-        this.subscriptionRepository =
-                subscriptionRepository;
-
-        this.userServiceClient =
-                userServiceClient;
-
-        this.catalogServiceClient =
-                catalogServiceClient;
+        this.subscriptionRepository = subscriptionRepository;
+        this.mobileLineRepository = mobileLineRepository;
+        this.catalogServiceClient = catalogServiceClient;
     }
 
-    /*
-     * ========================================================
-     * CREATE SUBSCRIPTION
-     * ========================================================
-     *
-     * Business flow:
-     *
-     * 1. Validate customer through User Service.
-     * 2. Validate plan through Catalog Service.
-     * 3. Check whether phone already has an ACTIVE
-     *    subscription.
-     * 4. Create and save the subscription.
-     */
     @Transactional
     public SubscriptionResponse createSubscription(
             SubscriptionRequest request) {
 
-        /*
-         * ----------------------------------------------------
-         * STEP 1
-         * ----------------------------------------------------
-         *
-         * Ask User Service:
-         *
-         * "Does this customer exist?"
-         *
-         * Customer data belongs to User Service.
-         */
-        userServiceClient.validateCustomer(
-                request.getCustomerId()
-        );
+        MobileLine mobileLine = mobileLineRepository
+                .findById(request.getMobileLineId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Mobile line not found with id: "
+                                + request.getMobileLineId()));
 
+        if (mobileLine.getStatus() != MobileLineStatus.ACTIVE) {
+            throw new InvalidSubscriptionStateException(
+                    "Subscription can only be created for an ACTIVE mobile line");
+        }
 
-        /*
-         * ----------------------------------------------------
-         * STEP 2
-         * ----------------------------------------------------
-         *
-         * Ask Catalog Service:
-         *
-         * "Does this plan exist?"
-         *
-         * Plan data belongs to Catalog Service.
-         */
-        catalogServiceClient.validatePlan(
-                request.getPlanId()
-        );
-
-
-        /*
-         * ----------------------------------------------------
-         * STEP 3
-         * ----------------------------------------------------
-         *
-         * Business rule:
-         *
-         * One phone number can have only ONE
-         * ACTIVE subscription at a time.
-         *
-         * Historical subscriptions are still allowed.
-         */
-        boolean activeSubscriptionExists =
-                subscriptionRepository
-                        .existsByPhoneNumberAndStatus(
-                                request.getPhoneNumber(),
-                                SubscriptionStatus.ACTIVE
-                        );
-
-        if (activeSubscriptionExists) {
+        if (subscriptionRepository.existsByMobileLineIdAndStatus(
+                request.getMobileLineId(),
+                SubscriptionStatus.ACTIVE)) {
 
             throw new DuplicateResourceException(
-                    "Phone number already has an active subscription: "
-                            + request.getPhoneNumber()
-            );
+                    "An active subscription already exists for mobile line id: "
+                            + request.getMobileLineId());
         }
 
+        catalogServiceClient.validatePlan(request.getPlanId());
 
-        /*
-         * ----------------------------------------------------
-         * STEP 4
-         * ----------------------------------------------------
-         *
-         * All validations passed.
-         *
-         * Now create the subscription.
-         */
-        Subscription subscription =
-                new Subscription();
+        Subscription subscription = new Subscription();
 
-        subscription.setCustomerId(
-                request.getCustomerId()
-        );
-
-        subscription.setPhoneNumber(
-                request.getPhoneNumber()
-        );
-
-        subscription.setPlanId(
-                request.getPlanId()
-        );
-
-        /*
-         * New subscription starts as ACTIVE.
-         */
-        subscription.setStatus(
-                SubscriptionStatus.ACTIVE
-        );
-
-        subscription.setStartDate(
-                request.getStartDate()
-        );
-
-
-        /*
-         * Save to subscription_db.
-         */
-        Subscription savedSubscription =
-                subscriptionRepository.save(
-                        subscription
-                );
+        subscription.setMobileLineId(request.getMobileLineId());
+        subscription.setPlanId(request.getPlanId());
+        subscription.setStatus(SubscriptionStatus.ACTIVE);
+        subscription.setStartDate(request.getStartDate());
 
         return mapToResponse(
-                savedSubscription
-        );
+                subscriptionRepository.save(subscription));
     }
 
-
-    /*
-     * ========================================================
-     * GET SUBSCRIPTION BY ID
-     * ========================================================
-     */
     @Transactional(readOnly = true)
-    public SubscriptionResponse getSubscriptionById(
-            Long id) {
+    public SubscriptionResponse getSubscriptionById(Long id) {
 
-        Subscription subscription =
-                subscriptionRepository.findById(id)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        "Subscription not found with id: "
-                                                + id
-                                )
-                        );
+        Subscription subscription = findSubscription(id);
 
-        return mapToResponse(
-                subscription
-        );
+        return mapToResponse(subscription);
     }
 
-
-    /*
-     * ========================================================
-     * GET CUSTOMER SUBSCRIPTION HISTORY
-     * ========================================================
-     *
-     * Returns all subscriptions belonging to a customer,
-     * including historical subscriptions.
-     */
     @Transactional(readOnly = true)
-    public List<SubscriptionResponse>
-            getSubscriptionsByCustomerId(
-                    Long customerId) {
+    public List<SubscriptionResponse> getSubscriptionsByMobileLine(
+            Long mobileLineId) {
 
         return subscriptionRepository
-                .findByCustomerId(customerId)
+                .findByMobileLineId(mobileLineId)
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
     }
 
-
-    /*
-     * ========================================================
-     * GET PHONE NUMBER HISTORY
-     * ========================================================
-     *
-     * Example:
-     *
-     * 9876543210
-     *     ├── POSTPAID100 → CANCELLED
-     *     ├── POSTPAID200 → CANCELLED
-     *     └── UNLIMITED399 → ACTIVE
-     */
     @Transactional(readOnly = true)
-    public List<SubscriptionResponse>
-            getSubscriptionHistoryByPhoneNumber(
-                    String phoneNumber) {
+    public SubscriptionResponse getActiveSubscription(
+            Long mobileLineId) {
+
+        Subscription subscription = subscriptionRepository
+                .findByMobileLineIdAndStatus(
+                        mobileLineId,
+                        SubscriptionStatus.ACTIVE)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "No active subscription found for mobile line id: "
+                                + mobileLineId));
+
+        return mapToResponse(subscription);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SubscriptionResponse> getSubscriptionsByStatus(
+            SubscriptionStatus status) {
 
         return subscriptionRepository
-                .findByPhoneNumber(phoneNumber)
+                .findByStatus(status)
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
     }
 
+    @Transactional
+    public SubscriptionResponse suspendSubscription(Long id) {
 
-    /*
-     * ========================================================
-     * GET CURRENT ACTIVE SUBSCRIPTION
-     * ========================================================
-     */
-    @Transactional(readOnly = true)
-    public SubscriptionResponse
-            getActiveSubscriptionByPhoneNumber(
-                    String phoneNumber) {
+        Subscription subscription = findSubscription(id);
 
-        Subscription subscription =
-                subscriptionRepository
-                        .findByPhoneNumberAndStatus(
-                                phoneNumber,
-                                SubscriptionStatus.ACTIVE
-                        )
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        "No active subscription found "
-                                                + "for phone number: "
-                                                + phoneNumber
-                                )
-                        );
+        if (subscription.getStatus() != SubscriptionStatus.ACTIVE) {
+            throw new InvalidSubscriptionStateException(
+                    "Only ACTIVE subscriptions can be suspended");
+        }
+
+        subscription.setStatus(SubscriptionStatus.SUSPENDED);
 
         return mapToResponse(
-                subscription
-        );
+                subscriptionRepository.save(subscription));
     }
 
-
-    /*
-     * ========================================================
-     * SUSPEND SUBSCRIPTION
-     * ========================================================
-     *
-     * ACTIVE → SUSPENDED
-     */
     @Transactional
-    public SubscriptionResponse suspendSubscription(
-            Long id) {
+    public SubscriptionResponse resumeSubscription(Long id) {
 
-        Subscription subscription =
-                getSubscriptionEntity(id);
+        Subscription subscription = findSubscription(id);
 
-        if (subscription.getStatus()
-                != SubscriptionStatus.ACTIVE) {
-
+        if (subscription.getStatus() != SubscriptionStatus.SUSPENDED) {
             throw new InvalidSubscriptionStateException(
-                    "Only an ACTIVE subscription can be suspended"
-            );
+                    "Only SUSPENDED subscriptions can be resumed");
         }
 
-        subscription.setStatus(
-                SubscriptionStatus.SUSPENDED
-        );
+        MobileLine mobileLine = mobileLineRepository
+                .findById(subscription.getMobileLineId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Mobile line not found with id: "
+                                + subscription.getMobileLineId()));
 
-        Subscription updatedSubscription =
-                subscriptionRepository.save(
-                        subscription
-                );
+        if (mobileLine.getStatus() != MobileLineStatus.ACTIVE) {
+            throw new InvalidSubscriptionStateException(
+                    "Subscription cannot be resumed because the mobile line is not ACTIVE");
+        }
+
+        subscription.setStatus(SubscriptionStatus.ACTIVE);
 
         return mapToResponse(
-                updatedSubscription
-        );
+                subscriptionRepository.save(subscription));
     }
 
-
-    /*
-     * ========================================================
-     * RESUME SUBSCRIPTION
-     * ========================================================
-     *
-     * SUSPENDED → ACTIVE
-     */
     @Transactional
-    public SubscriptionResponse resumeSubscription(
-            Long id) {
+    public SubscriptionResponse cancelSubscription(Long id) {
 
-        Subscription subscription =
-                getSubscriptionEntity(id);
+        Subscription subscription = findSubscription(id);
 
-        if (subscription.getStatus()
-                != SubscriptionStatus.SUSPENDED) {
+        if (subscription.getStatus() != SubscriptionStatus.ACTIVE
+                && subscription.getStatus() != SubscriptionStatus.SUSPENDED) {
 
             throw new InvalidSubscriptionStateException(
-                    "Only a SUSPENDED subscription can be resumed"
-            );
+                    "Only ACTIVE or SUSPENDED subscriptions can be cancelled");
         }
 
-        subscription.setStatus(
-                SubscriptionStatus.ACTIVE
-        );
-
-        Subscription updatedSubscription =
-                subscriptionRepository.save(
-                        subscription
-                );
+        subscription.setStatus(SubscriptionStatus.CANCELLED);
+        subscription.setEndDate(LocalDate.now());
 
         return mapToResponse(
-                updatedSubscription
-        );
+                subscriptionRepository.save(subscription));
     }
 
-
-    /*
-     * ========================================================
-     * CANCEL SUBSCRIPTION
-     * ========================================================
+    /**
+     * Performs the actual plan change.
      *
-     * ACTIVE/SUSPENDED → CANCELLED
-     *
-     * We don't delete the record because subscription
-     * history is important for future billing.
+     * Order Service calls this method after the order
+     * validation checks have passed.
      */
     @Transactional
-    public SubscriptionResponse cancelSubscription(
-            Long id) {
+    public SubscriptionResponse changePlan(
+            Long subscriptionId,
+            Long newPlanId) {
 
-        Subscription subscription =
-                getSubscriptionEntity(id);
+        Subscription subscription = findSubscription(subscriptionId);
 
-        if (subscription.getStatus()
-                == SubscriptionStatus.CANCELLED) {
-
+        if (subscription.getStatus() != SubscriptionStatus.ACTIVE) {
             throw new InvalidSubscriptionStateException(
-                    "Subscription is already cancelled"
-            );
+                    "Only an ACTIVE subscription can change plans");
         }
 
-        if (subscription.getStatus()
-                == SubscriptionStatus.EXPIRED) {
-
+        if (subscription.getPlanId().equals(newPlanId)) {
             throw new InvalidSubscriptionStateException(
-                    "Expired subscription cannot be cancelled"
-            );
+                    "Requested plan is already assigned to the subscription");
         }
-
-        subscription.setStatus(
-                SubscriptionStatus.CANCELLED
-        );
 
         /*
-         * Record the date on which the subscription ended.
+         * Catalog Service owns plan data.
+         * Validate that the requested plan exists and is active.
          */
-        subscription.setEndDate(
-                LocalDate.now()
-        );
+        catalogServiceClient.validatePlan(newPlanId);
+
+        /*
+         * Perform the actual plan change.
+         */
+        subscription.setPlanId(newPlanId);
 
         Subscription updatedSubscription =
-                subscriptionRepository.save(
-                        subscription
-                );
+                subscriptionRepository.save(subscription);
 
-        return mapToResponse(
-                updatedSubscription
-        );
+        return mapToResponse(updatedSubscription);
     }
 
+    private Subscription findSubscription(Long id) {
 
-    /*
-     * ========================================================
-     * INTERNAL HELPER
-     * ========================================================
-     *
-     * Fetch a subscription or throw 404.
-     */
-    private Subscription getSubscriptionEntity(
-            Long id) {
-
-        return subscriptionRepository.findById(id)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Subscription not found with id: "
-                                        + id
-                        )
-                );
+        return subscriptionRepository
+                .findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Subscription not found with id: " + id));
     }
 
-
-    /*
-     * ========================================================
-     * ENTITY → DTO MAPPING
-     * ========================================================
-     *
-     * We don't expose the JPA entity directly through
-     * the REST API.
-     */
     private SubscriptionResponse mapToResponse(
             Subscription subscription) {
 
         return new SubscriptionResponse(
                 subscription.getId(),
-                subscription.getCustomerId(),
-                subscription.getPhoneNumber(),
+                subscription.getMobileLineId(),
                 subscription.getPlanId(),
                 subscription.getStatus(),
                 subscription.getStartDate(),
                 subscription.getEndDate(),
                 subscription.getCreatedAt(),
-                subscription.getUpdatedAt()
-        );
+                subscription.getUpdatedAt());
     }
 }

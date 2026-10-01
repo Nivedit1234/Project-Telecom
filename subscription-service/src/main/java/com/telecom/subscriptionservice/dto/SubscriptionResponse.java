@@ -17,20 +17,11 @@ import lombok.Setter;
 public class SubscriptionResponse {
 
     private Long id;
-
-    private Long customerId;
-
-    private String phoneNumber;
-
+    private Long mobileLineId;
     private Long planId;
-
     private SubscriptionStatus status;
-
     private LocalDate startDate;
-
     private LocalDate endDate;
-
     private LocalDateTime createdAt;
-
     private LocalDateTime updatedAt;
 }

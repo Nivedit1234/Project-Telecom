@@ -10,6 +10,9 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
@@ -19,7 +22,14 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "subscriptions")
+@Table(
+    name = "subscriptions",
+    indexes = {
+        @Index(name = "idx_subscription_mobile_line", columnList = "mobile_line_id"),
+        @Index(name = "idx_subscription_plan", columnList = "plan_id"),
+        @Index(name = "idx_subscription_status", columnList = "status")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -30,46 +40,40 @@ public class Subscription {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
-    private Long customerId;
+    @Column(name = "mobile_line_id", nullable = false)
+    private Long mobileLineId;
 
-    @Column(nullable = false, length = 15)
-    private String phoneNumber;
-
-    @Column(nullable = false)
+    @Column(name = "plan_id", nullable = false)
     private Long planId;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false)
     private SubscriptionStatus status;
 
-    @Column(nullable = false)
+    @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
+    @Column(name = "end_date")
     private LocalDate endDate;
 
-    @Column(nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(nullable = false)
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
     @Version
-    @Column(nullable = false)
     private Long version;
 
-    @jakarta.persistence.PrePersist
+    @PrePersist
     protected void onCreate() {
-
         LocalDateTime now = LocalDateTime.now();
-
         createdAt = now;
         updatedAt = now;
     }
 
-    @jakarta.persistence.PreUpdate
+    @PreUpdate
     protected void onUpdate() {
-
         updatedAt = LocalDateTime.now();
     }
 }
