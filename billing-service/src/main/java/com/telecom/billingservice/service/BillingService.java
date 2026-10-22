@@ -10,13 +10,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.telecom.billingservice.client.CatalogServiceClient;
 import com.telecom.billingservice.client.UsageServiceClient;
+import com.telecom.billingservice.dto.BillingGeneratedEvent;
 import com.telecom.billingservice.dto.BillingRequest;
 import com.telecom.billingservice.dto.BillingResponse;
 import com.telecom.billingservice.exception.BillingNotFoundException;
 import com.telecom.billingservice.exception.InvalidBillingRequestException;
+import com.telecom.billingservice.messaging.BillingKafkaProducer;
 import com.telecom.billingservice.model.Billing;
 import com.telecom.billingservice.model.BillingStatus;
 import com.telecom.billingservice.repository.BillingRepository;
+import com.telecom.billingservice.dto.BillingGeneratedEvent;
+import com.telecom.billingservice.messaging.BillingKafkaProducer;
 
 @Service
 public class BillingService {
@@ -26,15 +30,18 @@ public class BillingService {
     private final BillingRepository billingRepository;
     private final UsageServiceClient usageServiceClient;
     private final CatalogServiceClient catalogServiceClient;
+    private final BillingKafkaProducer billingKafkaProducer;
 
     public BillingService(
             BillingRepository billingRepository,
             UsageServiceClient usageServiceClient,
-            CatalogServiceClient catalogServiceClient) {
+            CatalogServiceClient catalogServiceClient,
+            BillingKafkaProducer billingKafkaProducer) {
 
         this.billingRepository = billingRepository;
         this.usageServiceClient = usageServiceClient;
         this.catalogServiceClient = catalogServiceClient;
+        this.billingKafkaProducer = billingKafkaProducer;
     }
 
     @Transactional
@@ -123,6 +130,28 @@ public class BillingService {
         billing.setStatus(BillingStatus.GENERATED);
 
         Billing savedBilling = billingRepository.save(billing);
+
+        BillingGeneratedEvent event = new BillingGeneratedEvent(
+                savedBilling.getId(),
+                savedBilling.getCustomerId(),
+                savedBilling.getMobileLineId(),
+                savedBilling.getSubscriptionId(),
+                savedBilling.getPlanId(),
+                savedBilling.getBillingPeriodStart(),
+                savedBilling.getBillingPeriodEnd(),
+                savedBilling.getCallMinutes(),
+                savedBilling.getDataMb(),
+                savedBilling.getSmsCount(),
+                savedBilling.getCallCharges(),
+                savedBilling.getDataCharges(),
+                savedBilling.getSmsCharges(),
+                savedBilling.getPlanCharges(),
+                savedBilling.getTotalAmount()
+        );
+
+       // billingKafkaProducer.publishBillingGenerated(event);
+
+        billingKafkaProducer.publishBillingGenerated(event);
 
         return toResponse(savedBilling);
     }
