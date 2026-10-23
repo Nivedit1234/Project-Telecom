@@ -9,11 +9,13 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.telecom.subscriptionservice.dto.SubscriptionRequest;
 import com.telecom.subscriptionservice.dto.SubscriptionResponse;
+import com.telecom.subscriptionservice.model.SubscriptionStatus;
 import com.telecom.subscriptionservice.service.SubscriptionService;
 
 import jakarta.validation.Valid;
@@ -27,8 +29,7 @@ public class SubscriptionController {
     public SubscriptionController(
             SubscriptionService subscriptionService) {
 
-        this.subscriptionService =
-                subscriptionService;
+        this.subscriptionService = subscriptionService;
     }
 
     @PostMapping
@@ -36,69 +37,65 @@ public class SubscriptionController {
     public SubscriptionResponse createSubscription(
             @Valid @RequestBody SubscriptionRequest request) {
 
-        return subscriptionService.createSubscription(
-                request);
+        return subscriptionService.createSubscription(request);
     }
 
     @GetMapping("/{id}")
     public SubscriptionResponse getSubscriptionById(
             @PathVariable Long id) {
 
-        return subscriptionService
-                .getSubscriptionById(id);
+        return subscriptionService.getSubscriptionById(id);
     }
 
-    @GetMapping("/customer/{customerId}")
-    public List<SubscriptionResponse>
-            getSubscriptionsByCustomerId(
-                    @PathVariable Long customerId) {
+    @GetMapping("/mobile-line/{mobileLineId}")
+    public List<SubscriptionResponse> getSubscriptionsByMobileLine(
+            @PathVariable Long mobileLineId) {
 
-        return subscriptionService
-                .getSubscriptionsByCustomerId(
-                        customerId);
+        return subscriptionService.getSubscriptionsByMobileLine(
+                mobileLineId);
     }
 
-    @GetMapping("/phone/{phoneNumber}")
-    public List<SubscriptionResponse>
-            getSubscriptionHistoryByPhoneNumber(
-                    @PathVariable String phoneNumber) {
+    @GetMapping("/mobile-line/{mobileLineId}/active")
+    public SubscriptionResponse getActiveSubscription(
+            @PathVariable Long mobileLineId) {
 
-        return subscriptionService
-                .getSubscriptionHistoryByPhoneNumber(
-                        phoneNumber);
+        return subscriptionService.getActiveSubscription(
+                mobileLineId);
     }
 
-    @GetMapping("/phone/{phoneNumber}/active")
-    public SubscriptionResponse
-            getActiveSubscriptionByPhoneNumber(
-                    @PathVariable String phoneNumber) {
+    @GetMapping("/status")
+    public List<SubscriptionResponse> getSubscriptionsByStatus(
+            @RequestParam SubscriptionStatus status) {
 
-        return subscriptionService
-                .getActiveSubscriptionByPhoneNumber(
-                        phoneNumber);
+        return subscriptionService.getSubscriptionsByStatus(status);
+    }
+
+    @PostMapping("/{id}/change-plan/{planId}")
+    public SubscriptionResponse changePlan(
+            @PathVariable Long id,
+            @PathVariable Long planId) {
+
+        return subscriptionService.changePlan(id, planId);
     }
 
     @PostMapping("/{id}/suspend")
     public SubscriptionResponse suspendSubscription(
             @PathVariable Long id) {
 
-        return subscriptionService
-                .suspendSubscription(id);
+        return subscriptionService.suspendSubscription(id);
     }
 
     @PostMapping("/{id}/resume")
     public SubscriptionResponse resumeSubscription(
             @PathVariable Long id) {
 
-        return subscriptionService
-                .resumeSubscription(id);
+        return subscriptionService.resumeSubscription(id);
     }
 
     @DeleteMapping("/{id}")
     public SubscriptionResponse cancelSubscription(
             @PathVariable Long id) {
 
-        return subscriptionService
-                .cancelSubscription(id);
+        return subscriptionService.cancelSubscription(id);
     }
 }

@@ -11,15 +11,15 @@ import com.telecom.subscriptionservice.model.SubscriptionStatus;
 public interface SubscriptionRepository
         extends JpaRepository<Subscription, Long> {
 
-    List<Subscription> findByCustomerId(Long customerId);
+    List<Subscription> findByMobileLineId(Long mobileLineId);
 
-    List<Subscription> findByPhoneNumber(String phoneNumber);
-
-    Optional<Subscription> findByPhoneNumberAndStatus(
-            String phoneNumber,
+    Optional<Subscription> findByMobileLineIdAndStatus(
+            Long mobileLineId,
             SubscriptionStatus status);
 
-    boolean existsByPhoneNumberAndStatus(
-            String phoneNumber,
+    boolean existsByMobileLineIdAndStatus(
+            Long mobileLineId,
             SubscriptionStatus status);
+
+    List<Subscription> findByStatus(SubscriptionStatus status);
 }
